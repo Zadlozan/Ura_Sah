@@ -118,7 +118,15 @@ export const THEMES = [
   { id: 'neon', name: 'Neon' },
   { id: 'kontrast', name: 'Visok kontrast' },
 ];
-function applyTheme() { document.documentElement.dataset.theme = S().theme; }
+// barve za posamezno polovico (shema "Po izbiri igralcev")
+export const PALETTES = [
+  ...THEMES,
+  { id: 'vijola', name: 'Vijola' },
+  { id: 'roza', name: 'Roza' },
+  { id: 'sonce', name: 'Sonce' },
+];
+const isCustom = () => S().theme === 'custom';
+function applyTheme() { document.documentElement.dataset.theme = isCustom() ? 'noc' : S().theme; }
 
 // ================= navigacija =================
 let currentView = 'home';
@@ -477,9 +485,13 @@ views.settings = () => {
   const tg = (key, label) => `<label class="switch"><span>${label}</span><input type="checkbox" data-set="${key}" ${s[key] ? 'checked' : ''}><i></i></label>`;
   return `<h1 class="vh">Nastavitve</h1>
   <h3 class="sec">Barvna shema ure</h3>
-  <div class="themes">${THEMES.map(t => `
+  <div class="themes">
+    <button class="theme ${s.theme === 'custom' ? 'on' : ''}" data-theme-pick="custom">
+      <span class="sw"><i class="a" data-theme="lava">5:00</i><i class="a" data-theme="morje">4:12</i></span>Po izbiri igralcev</button>
+    ${THEMES.map(t => `
     <button class="theme ${t.id === s.theme ? 'on' : ''}" data-theme-pick="${t.id}">
       <span class="sw" data-theme="${t.id}"><i class="a">5:00</i><i class="i">4:12</i></span>${t.name}</button>`).join('')}</div>
+  <p class="hint">Po izbiri igralcev: pred začetkom igre vsak igralec na svoji polovici tapne barvo. Izbira se zapomni pri igralcu (pri hitri igri za belega/črnega).</p>
   <h3 class="sec">Zvok in opozorila</h3>
   <div class="card">
     ${tg('tapSound', 'Zvok ob pritisku ure')}
@@ -504,7 +516,7 @@ views.settings = () => {
     </div>
     <button class="btn danger ghost small" id="s-wipe">Pobriši vse podatke</button>
   </div>
-  <p class="muted small center">Šah Ura · v1.0 · pravila FIDE za pospešeni in hitropotezni šah</p>`;
+  <p class="muted small center">Šah Ura · v1.1 · pravila FIDE za pospešeni in hitropotezni šah</p>`;
 };
 bind.settings = v => {
   $$('[data-set]', v).forEach(i => i.onchange = () => store.settings.set({ [i.dataset.set]: i.checked }));
@@ -550,7 +562,11 @@ function startGame(def, pw, pb) {
     onFlag: side => onFlag(side),
     onStage: () => { sounds.start(); },
   });
-  game = { clock, def, pw, pb, warned: { w: false, b: false }, ended: false, last: {} };
+  game = {
+    clock, def, pw, pb, warned: { w: false, b: false }, ended: false, last: {},
+    colors: { w: pw?.color || S().colorW || 'noc', b: pb?.color || S().colorB || 'morje' },
+  };
+  buildSwatches();
   $$('.toast').forEach(t => t.remove());
   const g = $('#game');
   g.hidden = false;
@@ -571,6 +587,33 @@ function sideOf(halfId) {
 function nameOf(side) {
   const p = side === 'w' ? game.pw : game.pb;
   return p ? fullName(p) : SIDE[side];
+}
+
+function buildSwatches() {
+  const html = PALETTES.map(p => `<button class="swatch" data-c="${p.id}" data-theme="${p.id}" title="${p.name}" aria-label="${p.name}"></button>`).join('');
+  $$('#game .swatches').forEach(el => { el.innerHTML = html; });
+}
+
+function applyHalfColors() {
+  if (!game) return;
+  const custom = isCustom();
+  $('#game').classList.toggle('custom', custom);
+  ['half-a', 'half-b'].forEach(id => {
+    const half = $('#' + id), side = sideOf(id);
+    if (custom) half.dataset.theme = game.colors[side]; else delete half.dataset.theme;
+    $$('.swatch', half).forEach(b => b.classList.toggle('on', b.dataset.c === game.colors[side]));
+  });
+}
+
+function pickColor(halfId, c) {
+  if (!game || game.clock.started) return;
+  const side = sideOf(halfId);
+  game.colors[side] = c;
+  const p = side === 'w' ? game.pw : game.pb;
+  if (p) { p.color = c; store.players.upsert(p); }
+  else store.settings.set(side === 'w' ? { colorW: c } : { colorB: c });
+  applyHalfColors();
+  vib(15);
 }
 
 function layoutGame() {
@@ -627,15 +670,16 @@ function renderGame(force = false) {
     }
     const dl = c.delayLeft(side);
     let info;
-    if (!c.started) info = side === 'b' ? 'Črni pritisne za začetek' : 'Beli začne';
+    if (!c.started) info = (side === 'b' ? 'Črni pritisne za začetek' : 'Beli začne') + (isCustom() ? ' · izberi barvo' : '');
     else if (c.flag === side) info = '⚑ Čas je potekel';
     else if (!c.running && c.active === side) info = '⏸ Pavza';
     else if (dl > 0) info = `zakasnitev ${Math.ceil(dl / 1000)} s`;
     else info = c.stageInfo(side);
-    const moves = `Poteze: ${c.p[side].moves}`;
+    const moves = c.started ? `Poteze: ${c.p[side].moves}` : '';
     if (force || last.i !== info) { $('.info', half).textContent = info; last.i = info; }
     if (force || last.m !== moves) { $('.moves', half).textContent = moves; last.m = moves; }
     if (force) {
+      applyHalfColors();
       $('.pname', half).innerHTML = `<span class="dot ${side}"></span>${esc(nameOf(side))}`;
     }
     game.last[key] = last;
@@ -833,7 +877,12 @@ function fmtTimeEdit(ms) {
 
 // dogodki ure
 ['half-a', 'half-b'].forEach(id => {
-  $('#' + id).addEventListener('pointerdown', e => { e.preventDefault(); audio(); pressHalf(id); });
+  $('#' + id).addEventListener('pointerdown', e => {
+    e.preventDefault(); audio();
+    const sw = e.target.closest('.swatch');
+    if (sw) { if (!game?.clock.started) pickColor(id, sw.dataset.c); return; }
+    pressHalf(id);
+  });
 });
 $('#g-pause').addEventListener('click', () => {
   if (!game) return;

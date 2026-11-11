@@ -17,6 +17,8 @@ const defaults = () => ({
     vibrate: true,
     rotateLandscape: false,
     whiteBottom: true,
+    colorW: 'noc',
+    colorB: 'morje',
     lastClockId: 'p-pop',
     mode: 'turnir',
     lastWhite: '',

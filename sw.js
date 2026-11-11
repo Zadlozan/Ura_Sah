@@ -1,5 +1,5 @@
 // Service worker: aplikacija deluje brez interneta.
-const CACHE = 'sahura-v1.0.0';
+const CACHE = 'sahura-v1.1.0';
 const FILES = [
   './', './index.html', './css/app.css', './js/app.js', './js/clock.js', './js/store.js',
   './manifest.webmanifest', './icons/icon-192.png', './icons/icon-512.png', './icons/apple-touch-icon.png',
