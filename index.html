@@ -1,0 +1,46 @@
+<!DOCTYPE html>
+<html lang="sl">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, user-scalable=no">
+  <meta name="theme-color" content="#0f1115">
+  <meta name="mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+  <meta name="apple-mobile-web-app-title" content="Šah Ura">
+  <title>Šah Ura</title>
+  <link rel="manifest" href="manifest.webmanifest">
+  <link rel="icon" href="icons/icon-192.png">
+  <link rel="apple-touch-icon" href="icons/apple-touch-icon.png">
+  <link rel="stylesheet" href="css/app.css">
+</head>
+<body>
+  <main id="view"></main>
+
+  <nav id="tabs">
+    <button data-view="home"><span>▶</span>Igra</button>
+    <button data-view="clocks"><span>⏱</span>Ure</button>
+    <button data-view="players"><span>♟</span>Igralci</button>
+    <button data-view="history"><span>☰</span>Zgodovina</button>
+    <button data-view="settings"><span>⚙</span>Nastavitve</button>
+  </nav>
+
+  <div id="game" class="game" hidden>
+    <div class="half" id="half-a">
+      <div class="face"><div class="pname"></div><div class="time">0:00</div><div class="meta"><span class="moves"></span><span class="info"></span></div></div>
+    </div>
+    <div class="gbar">
+      <button id="g-exit" class="gbtn" aria-label="Izhod">✕</button>
+      <button id="g-swap" class="gbtn" aria-label="Zamenjaj strani">⇅</button>
+      <button id="g-pause" class="gbtn main" aria-label="Pavza">⏸</button>
+      <button id="g-arb" class="gbtn" aria-label="Sodnik">⚖</button>
+    </div>
+    <div class="half" id="half-b">
+      <div class="face"><div class="pname"></div><div class="time">0:00</div><div class="meta"><span class="moves"></span><span class="info"></span></div></div>
+    </div>
+  </div>
+
+  <div id="modal-root"></div>
+  <script type="module" src="js/app.js"></script>
+</body>
+</html>
