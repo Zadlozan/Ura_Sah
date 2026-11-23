@@ -19,6 +19,7 @@ const defaults = () => ({
     whiteBottom: true,
     colorW: 'noc',
     colorB: 'morje',
+    hcSide: 'w',
     lastClockId: 'p-pop',
     mode: 'turnir',
     lastWhite: '',

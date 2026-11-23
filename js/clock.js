@@ -44,8 +44,9 @@ export function tcLabel(t) {
   return `${base}, zakasnitev ${t.inc} s`;
 }
 
-export function clockLabel(def) {
-  if (def.b) return `B ${tcLabel(def.w)} · Č ${tcLabel(def.b)}`;
+// colors=true: dejanski čas po barvah (B/Č), sicer opis hendikepa
+export function clockLabel(def, colors = false) {
+  if (def.b) return colors ? `B ${tcLabel(def.w)} · Č ${tcLabel(def.b)}` : `hendikep ${tcLabel(def.w)} proti ${tcLabel(def.b)}`;
   return tcLabel(def.w);
 }
 

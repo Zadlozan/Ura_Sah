@@ -1,6 +1,7 @@
 import * as store from './store.js';
 import { PRESETS, MODES, ChessClock, tcLabel, clockLabel, fmtTime, fmtMin, parseTime } from './clock.js';
 
+const VERSION = '1.3';
 store.load();
 const S = () => store.settings.get();
 
@@ -163,6 +164,22 @@ views.home = () => {
     <label class="lbl">Ura</label>
     <select id="h-clock">${clockOpts}</select>
     <div class="clock-note">${esc(cur.note || clockLabel(cur))}</div>
+    ${cur.b ? (() => {
+      const hs = s.hcSide === 'b' ? 'b' : 'w';
+      const nm = side => {
+        if (s.mode !== 'turnir') return '';
+        const p = store.players.get(side === 'w' ? s.lastWhite : s.lastBlack);
+        return p ? esc(p.first) : '';
+      };
+      return `<label class="lbl">Hendikep (${esc(tcLabel(cur.w))}) ima</label>
+      <div class="seg hc-seg">
+        <button data-hc="w" class="${hs === 'w' ? 'on' : ''}">♔ Beli<small>${nm('w') || '&nbsp;'}</small></button>
+        <button data-hc="b" class="${hs === 'b' ? 'on' : ''}">♚ Črni<small>${nm('b') || '&nbsp;'}</small></button>
+      </div>
+      <div class="clock-note">${hs === 'w'
+        ? `Beli ${esc(tcLabel(cur.w))} · Črni ${esc(tcLabel(cur.b))}`
+        : `Beli ${esc(tcLabel(cur.b))} · Črni ${esc(tcLabel(cur.w))}`}</div>`;
+    })() : ''}
   </section>
   ${s.mode === 'turnir' ? `
   <section class="card">
@@ -185,12 +202,15 @@ const bind = {};
 bind.home = v => {
   $$('[data-mode]', v).forEach(b => b.onclick = () => { store.settings.set({ mode: b.dataset.mode }); go('home'); });
   $('#h-clock', v).onchange = e => { store.settings.set({ lastClockId: e.target.value }); go('home'); };
+  $$('[data-hc]', v).forEach(b => b.onclick = () => { store.settings.set({ hcSide: b.dataset.hc }); go('home'); });
   const w = $('#h-w', v), b = $('#h-b', v);
   if (w) {
     w.onchange = () => store.settings.set({ lastWhite: w.value });
     b.onchange = () => store.settings.set({ lastBlack: b.value });
     $('#h-swap', v).onclick = () => {
-      store.settings.set({ lastWhite: b.value, lastBlack: w.value });
+      const patch = { lastWhite: b.value, lastBlack: w.value };
+      if (getClock(S().lastClockId).b) patch.hcSide = S().hcSide === 'b' ? 'w' : 'b';
+      store.settings.set(patch);
       go('home');
     };
     $('#h-newp', v).onclick = () => playerForm(null, p => {
@@ -208,8 +228,8 @@ bind.home = v => {
       const pw = store.players.get(s.lastWhite), pb = store.players.get(s.lastBlack);
       if (!pw || !pb) return toast('Izberi belega in črnega igralca.');
       if (pw.id === pb.id) return toast('Beli in črni morata biti različna igralca.');
-      startGame(def, pw, pb);
-    } else startGame(def, null, null);
+      startGame(def, pw, pb, s.hcSide);
+    } else startGame(def, null, null, s.hcSide);
   };
 };
 
@@ -302,24 +322,26 @@ function clockForm(def) {
   const same = !d.b;
   modal(d.id ? 'Uredi uro' : 'Nova ura', `
     <label class="lbl">Ime ure</label><input id="cf-name" value="${esc(d.name)}" placeholder="npr. Trening 12+3">
-    <label class="check"><input type="checkbox" id="cf-hc" ${same ? '' : 'checked'}> Različen čas za belega in črnega (hendikep)</label>
-    <h3 class="sec" id="cf-wh">${same ? 'Čas (oba igralca)' : '♔ Beli'}</h3>
+    <label class="check"><input type="checkbox" id="cf-hc" ${same ? '' : 'checked'}> Hendikep (različen čas za igralca)</label>
+    <p class="hint" id="cf-hint" ${same ? 'hidden' : ''}>Kdo ima hendikep (beli ali črni), izbereš na zaslonu Igra pred začetkom partije.</p>
+    <h3 class="sec" id="cf-wh">${same ? 'Čas (oba igralca)' : 'Hendikepirani igralec (manj časa)'}</h3>
     ${tcEditor('cf-w', d.w)}
-    <div id="cf-bwrap" ${same ? 'hidden' : ''}><h3 class="sec">♚ Črni</h3>${tcEditor('cf-b', d.b || d.w)}</div>
+    <div id="cf-bwrap" ${same ? 'hidden' : ''}><h3 class="sec">Nasprotnik</h3>${tcEditor('cf-b', d.b || d.w)}</div>
     <div class="row-btns"><button class="btn" data-close>Prekliči</button><button class="btn primary" id="cf-save">Shrani</button></div>`, {
     wide: true,
     onMount(el, close) {
       wireTc($('#cf-w', el)); wireTc($('#cf-b', el));
       $('#cf-hc', el).onchange = e => {
         $('#cf-bwrap', el).hidden = !e.target.checked;
-        $('#cf-wh', el).textContent = e.target.checked ? '♔ Beli' : 'Čas (oba igralca)';
+        $('#cf-hint', el).hidden = !e.target.checked;
+        $('#cf-wh', el).textContent = e.target.checked ? 'Hendikepirani igralec (manj časa)' : 'Čas (oba igralca)';
       };
       $('#cf-save', el).onclick = () => {
         const w = readTc($('#cf-w', el));
         const hc = $('#cf-hc', el).checked;
         const b = hc ? readTc($('#cf-b', el)) : null;
         if (!w || (hc && !b)) return toast('Vsaka stopnja mora imeti čas večji od 0.');
-        const name = $('#cf-name', el).value.trim() || (hc ? `Hendikep ${tcLabel(w)} / ${tcLabel(b)}` : tcLabel(w));
+        const name = $('#cf-name', el).value.trim() || (hc ? `Hendikep ${tcLabel(w)} proti ${tcLabel(b)}` : tcLabel(w));
         const saved = store.clocks.upsert({ id: d.id, name, w, b });
         store.settings.set({ lastClockId: saved.id });
         close();
@@ -506,6 +528,11 @@ views.settings = () => {
     ${tg('rotateLandscape', 'Ležeče: obrni čas proti igralcema')}
     <p class="hint">Pokončno je zgornja polovica vedno obrnjena proti nasprotniku. Ležeče (tablica) lahko vsako polovico obrneš proti igralcu ob strani.</p>
   </div>
+  <h3 class="sec">Aplikacija</h3>
+  <div class="card">
+    <button class="btn primary" id="s-upd" style="width:100%">⟳ Osveži aplikacijo</button>
+    <p class="hint">Naloži najnovejšo različico s strežnika. Bližnjica na začetnem zaslonu ostane enaka, igralci, zgodovina in nastavitve se ohranijo. Potrebna je internetna povezava.</p>
+  </div>
   <h3 class="sec">Podatki</h3>
   <div class="card">
     <p class="small muted">Igralci, zgodovina in lastne ure so shranjeni na tej napravi. Za prenos na drugo napravo izvozi varnostno kopijo in jo tam uvozi.</p>
@@ -516,7 +543,7 @@ views.settings = () => {
     </div>
     <button class="btn danger ghost small" id="s-wipe">Pobriši vse podatke</button>
   </div>
-  <p class="muted small center">Šah Ura · v1.1 · pravila FIDE za pospešeni in hitropotezni šah</p>`;
+  <p class="muted small center">Šah Ura · v${VERSION} · pravila FIDE za pospešeni in hitropotezni šah</p>`;
 };
 bind.settings = v => {
   $$('[data-set]', v).forEach(i => i.onchange = () => store.settings.set({ [i.dataset.set]: i.checked }));
@@ -547,6 +574,7 @@ bind.settings = v => {
     } catch (err) { toast(err.message || 'Napaka pri uvozu'); }
     e.target.value = '';
   };
+  $('#s-upd', v).onclick = e => updateApp(e.currentTarget);
   $('#s-wipe', v).onclick = async () => {
     if (await confirmBox('Res pobrišem vse igralce, zgodovino, lastne ure in nastavitve?', 'Pobriši vse', true)) {
       store.wipe(); applyTheme(); toast('Podatki pobrisani'); go('settings');
@@ -557,13 +585,19 @@ bind.settings = v => {
 // ================= IGRA =================
 let game = null; // { clock, def, pw, pb, ui }
 
-function startGame(def, pw, pb) {
-  const clock = new ChessClock(def, {
+function effectiveDef(def, hcSide) {
+  if (!def.b || hcSide !== 'b') return def;
+  return { ...def, w: def.b, b: def.w };
+}
+
+function startGame(def, pw, pb, hcSide = 'w') {
+  hcSide = hcSide === 'b' ? 'b' : 'w';
+  const clock = new ChessClock(effectiveDef(def, hcSide), {
     onFlag: side => onFlag(side),
     onStage: () => { sounds.start(); },
   });
   game = {
-    clock, def, pw, pb, warned: { w: false, b: false }, ended: false, last: {},
+    clock, def, hcSide, pw, pb, warned: { w: false, b: false }, ended: false, last: {},
     colors: { w: pw?.color || S().colorW || 'noc', b: pb?.color || S().colorB || 'morje' },
   };
   buildSwatches();
@@ -749,7 +783,7 @@ function endDialog(flagSide = null) {
       dismiss: false,
       onMount(el, close) {
         $('#e-home', el).onclick = () => { close(); stopGame(); };
-        $('#e-again', el).onclick = () => { const d = game.def; close(); stopGame(); startGame(d, null, null); };
+        $('#e-again', el).onclick = () => { const d = game.def, h = game.hcSide; close(); stopGame(); startGame(d, null, null, h); };
       },
     });
     return;
@@ -792,7 +826,7 @@ function endDialog(flagSide = null) {
           date: new Date().toISOString(),
           w: { id: g.pw.id, name: fullName(g.pw) },
           b: { id: g.pb.id, name: fullName(g.pb) },
-          clock: g.def.name, tc: clockLabel(g.def),
+          clock: g.def.name, tc: clockLabel(effectiveDef(g.def, g.hcSide), true),
           result, reason: $('#e-reason', el).value,
           moves: Math.max(c.p.w.moves, c.p.b.moves),
           wLeft: Math.max(0, Math.round(c.remaining('w'))), bLeft: Math.max(0, Math.round(c.remaining('b'))),
@@ -815,9 +849,10 @@ function afterSave() {
       <button class="btn ghost" id="a-home">Domov</button></div>`, {
     dismiss: false,
     onMount(el, close) {
-      const restart = (w, b) => { const d = g.def; close(); stopGame(); store.settings.set({ lastWhite: w.id, lastBlack: b.id }); startGame(d, w, b); };
-      $('#a-rev', el).onclick = () => restart(g.pb, g.pw);
-      $('#a-same', el).onclick = () => restart(g.pw, g.pb);
+      // pri revanši gre hendikep z igralcem na drugo barvo
+      const restart = (w, b, h) => { const d = g.def; close(); stopGame(); store.settings.set({ lastWhite: w.id, lastBlack: b.id, hcSide: h }); startGame(d, w, b, h); };
+      $('#a-rev', el).onclick = () => restart(g.pb, g.pw, g.hcSide === 'b' ? 'w' : 'b');
+      $('#a-same', el).onclick = () => restart(g.pw, g.pb, g.hcSide);
       $('#a-home', el).onclick = () => { close(); stopGame(); };
     },
   });
@@ -912,6 +947,39 @@ window.addEventListener('popstate', () => {
 $$('#tabs button').forEach(b => b.onclick = () => go(b.dataset.view));
 applyTheme();
 go('home');
+
+// ================= posodobitev =================
+async function updateApp(btn) {
+  btn.disabled = true;
+  btn.textContent = 'Preverjam …';
+  let latest = null;
+  try {
+    const txt = await fetch('sw.js?t=' + Date.now(), { cache: 'no-store' }).then(r => { if (!r.ok) throw 0; return r.text(); });
+    latest = (txt.match(/sahura-v(\d+\.\d+)/) || [])[1] || null;
+  } catch {
+    btn.disabled = false; btn.textContent = '⟳ Osveži aplikacijo';
+    return toast('Ni povezave s strežnikom. Poskusi znova, ko imaš internet.');
+  }
+  btn.textContent = 'Posodabljam …';
+  try {
+    if (window.caches) await Promise.all((await caches.keys()).map(k => caches.delete(k)));
+    const reg = await navigator.serviceWorker?.getRegistration();
+    if (reg) {
+      await reg.update().catch(() => { });
+      const nw = reg.installing || reg.waiting;
+      if (nw) await new Promise(res => {
+        const t = setTimeout(res, 4000);
+        navigator.serviceWorker.addEventListener('controllerchange', () => { clearTimeout(t); res(); }, { once: true });
+      });
+    }
+  } catch { }
+  try { sessionStorage.setItem('sahura:updated', latest && latest !== VERSION ? `Posodobljeno na v${latest}` : `Osveženo · v${latest || VERSION} je najnovejša`); } catch { }
+  location.reload();
+}
+try {
+  const msg = sessionStorage.getItem('sahura:updated');
+  if (msg) { sessionStorage.removeItem('sahura:updated'); setTimeout(() => toast(msg), 400); }
+} catch { }
 
 if ('serviceWorker' in navigator && location.protocol !== 'file:') {
   navigator.serviceWorker.register('sw.js').catch(() => { });
